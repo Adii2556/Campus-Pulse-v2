@@ -16,7 +16,7 @@ const VALID_TONES = new Set(['critical', 'warn', 'good', 'info']);
 const ISO_DATE = /^(\d{4})-(\d{2})-(\d{2})$/;
 const TIME_RE = /^([01]?\d|2[0-3]):[0-5]\d$/;
 
-export function validDate(v) {
+export function validDate(v: unknown): string | null {
   if (typeof v !== 'string') return null;
   const m = ISO_DATE.exec(v.trim());
   if (!m) return null;
@@ -24,23 +24,42 @@ export function validDate(v) {
   if (d.getFullYear() !== +m[1] || d.getMonth() !== +m[2] - 1 || d.getDate() !== +m[3]) return null;
   return v.trim();
 }
-export function validTime(v) {
+
+export function validTime(v: unknown): string | null {
   if (typeof v !== 'string') return null;
   const t = v.trim();
   return TIME_RE.test(t) ? t : null;
 }
-export function cleanString(v, max) {
+
+export function cleanString(v: unknown, max: number): string | null {
   return typeof v === 'string' && v.trim() ? v.trim().slice(0, max) : null;
 }
-export function oneOf(v, set, fallback) {
-  return typeof v === 'string' && set.has(v) ? v : fallback;
+
+export function oneOf<T extends string>(v: unknown, set: Set<T>, fallback: T): T {
+  return typeof v === 'string' && set.has(v as T) ? (v as T) : fallback;
 }
 
-export function isAiConfigured(env = process.env) {
+export function isAiConfigured(env: Record<string, string | undefined> = process.env): boolean {
   return !!(env.OPENAI_API_KEY && env.OPENAI_API_KEY.trim());
 }
 
-async function chat(env, messages, { maxTokens = 700, temperature = 0.2, timeoutMs = 20000, signal } = {}) {
+interface ChatMessage {
+  role: 'system' | 'user' | 'assistant';
+  content: string;
+}
+
+interface ChatOptions {
+  maxTokens?: number;
+  temperature?: number;
+  timeoutMs?: number;
+  signal?: AbortSignal;
+}
+
+async function chat(
+  env: Record<string, string | undefined>,
+  messages: ChatMessage[],
+  { maxTokens = 700, temperature = 0.2, timeoutMs = 20000, signal }: ChatOptions = {}
+): Promise<string> {
   const base = (env.OPENAI_BASE_URL || 'https://api.openai.com/v1').replace(/\/+$/, '');
   const model = env.OPENAI_MODEL || 'gpt-4o-mini';
   const controller = new AbortController();
@@ -60,7 +79,7 @@ async function chat(env, messages, { maxTokens = 700, temperature = 0.2, timeout
       const body = await res.text().catch(() => '');
       throw new Error(`AI provider HTTP ${res.status}${body ? `: ${body.slice(0, 200)}` : ''}`);
     }
-    const data = await res.json();
+    const data = await res.json() as { choices?: { message?: { content?: unknown } }[] };
     const content = data?.choices?.[0]?.message?.content;
     if (typeof content !== 'string' || !content.trim()) throw new Error('AI provider returned an empty completion');
     return content;
@@ -69,7 +88,7 @@ async function chat(env, messages, { maxTokens = 700, temperature = 0.2, timeout
   }
 }
 
-function extractJson(text) {
+function extractJson(text: string): unknown {
   const trimmed = text.trim();
   try {
     return JSON.parse(trimmed);
@@ -84,9 +103,9 @@ function extractJson(text) {
   }
 }
 
-function todayContext() {
+function todayContext(): { iso: string; weekday: string } {
   const now = new Date();
-  const pad = (n) => String(n).padStart(2, '0');
+  const pad = (n: number) => String(n).padStart(2, '0');
   const iso = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
   const weekday = now.toLocaleDateString('en-IN', { weekday: 'long' });
   return { iso, weekday };
@@ -94,12 +113,29 @@ function todayContext() {
 
 /* ---------------- extraction ---------------- */
 
-export function validateExtractionPayload(parsed) {
+export interface ExtractionResultPayload {
+  title: string;
+  date: string | null;
+  time: string | null;
+  endTime: string | null;
+  venue: string | null;
+  category: string;
+  priority: string;
+  cancelled: boolean;
+  signals: string[];
+}
+
+interface CustomError extends Error {
+  code?: string;
+}
+
+export function validateExtractionPayload(parsed: unknown): ExtractionResultPayload | null {
   if (!parsed || typeof parsed !== 'object') return null;
-  const title = cleanString(parsed.title, 240);
+  const p = parsed as Record<string, unknown>;
+  const title = cleanString(p.title, 240);
   if (!title) return null;
-  let time = validTime(parsed.time);
-  let endTime = validTime(parsed.endTime);
+  const time = validTime(p.time);
+  let endTime = validTime(p.endTime);
   // keep window sane
   if (time && endTime) {
     const [sh, sm] = time.split(':').map(Number);
@@ -108,20 +144,20 @@ export function validateExtractionPayload(parsed) {
   }
   return {
     title,
-    date: validDate(parsed.date),
+    date: validDate(p.date),
     time,
     endTime,
-    venue: cleanString(parsed.venue, 120),
-    category: oneOf(parsed.category, VALID_CATEGORIES, 'General'),
-    priority: oneOf(parsed.priority, VALID_PRIORITIES, 'medium'),
-    cancelled: parsed.cancelled === true,
-    signals: Array.isArray(parsed.signals) ? parsed.signals.filter((s) => typeof s === 'string').slice(0, 6) : [],
+    venue: cleanString(p.venue, 120),
+    category: oneOf(p.category, VALID_CATEGORIES, 'General'),
+    priority: oneOf(p.priority, VALID_PRIORITIES, 'medium'),
+    cancelled: p.cancelled === true,
+    signals: Array.isArray(p.signals) ? p.signals.filter((s): s is string => typeof s === 'string').slice(0, 6) : [],
   };
 }
 
-export async function runExtraction(text, env = process.env) {
+export async function runExtraction(text: string, env: Record<string, string | undefined> = process.env): Promise<ExtractionResultPayload> {
   if (!isAiConfigured(env)) {
-    const err = new Error('The AI service is not configured on this deployment.');
+    const err: CustomError = new Error('The AI service is not configured on this deployment.');
     err.code = 'UNCONFIGURED';
     throw err;
   }
@@ -143,7 +179,7 @@ export async function runExtraction(text, env = process.env) {
   const parsed = extractJson(content);
   const clean = validateExtractionPayload(parsed);
   if (!clean) {
-    const err = new Error('The AI service returned an unusable result.');
+    const err: CustomError = new Error('The AI service returned an unusable result.');
     err.code = 'INVALID';
     throw err;
   }
@@ -152,37 +188,50 @@ export async function runExtraction(text, env = process.env) {
 
 /* ---------------- weekly digest ---------------- */
 
-export function validateDigestPayload(parsed) {
+export interface DigestLinePayload {
+  tone: string;
+  tag: string;
+  text: string;
+}
+
+export interface DigestResultPayload {
+  lines: DigestLinePayload[];
+  closer: string;
+}
+
+export function validateDigestPayload(parsed: unknown): DigestResultPayload | null {
   if (!parsed || typeof parsed !== 'object') return null;
-  const linesRaw = Array.isArray(parsed.lines) ? parsed.lines : null;
+  const p = parsed as Record<string, unknown>;
+  const linesRaw = Array.isArray(p.lines) ? p.lines : null;
   if (!linesRaw || linesRaw.length === 0) return null;
-  const lines = [];
+  const lines: DigestLinePayload[] = [];
   for (const entry of linesRaw.slice(0, 6)) {
     if (!entry || typeof entry !== 'object') continue;
-    const text = cleanString(entry.text, 400);
+    const e = entry as Record<string, unknown>;
+    const text = cleanString(e.text, 400);
     if (!text) continue;
     lines.push({
-      tone: oneOf(entry.tone, VALID_TONES, 'info'),
-      tag: (cleanString(entry.tag, 24) ?? 'NOTE').toUpperCase(),
+      tone: oneOf(e.tone, VALID_TONES, 'info'),
+      tag: (cleanString(e.tag, 24) ?? 'NOTE').toUpperCase(),
       text,
     });
   }
   if (!lines.length) return null;
-  return { lines, closer: cleanString(parsed.closer, 280) ?? '' };
+  return { lines, closer: cleanString(p.closer, 280) ?? '' };
 }
 
-export async function runDigest(items, env = process.env) {
+export async function runDigest(items: unknown, env: Record<string, string | undefined> = process.env): Promise<DigestResultPayload> {
   if (!isAiConfigured(env)) {
-    const err = new Error('The AI service is not configured on this deployment.');
+    const err: CustomError = new Error('The AI service is not configured on this deployment.');
     err.code = 'UNCONFIGURED';
     throw err;
   }
   if (!Array.isArray(items)) {
-    const err = new Error('items must be an array.');
+    const err: CustomError = new Error('items must be an array.');
     err.code = 'BAD_REQUEST';
     throw err;
   }
-  const compact = items.slice(0, 60).map((i = {}) => ({
+  const compact = (items as Record<string, unknown>[]).slice(0, 60).map((i = {}) => ({
     title: cleanString(i.title, 240) ?? '',
     date: validDate(i.date),
     time: validTime(i.time),
@@ -207,7 +256,7 @@ export async function runDigest(items, env = process.env) {
   const parsed = extractJson(content);
   const clean = validateDigestPayload(parsed);
   if (!clean) {
-    const err = new Error('The AI service returned an unusable digest.');
+    const err: CustomError = new Error('The AI service returned an unusable digest.');
     err.code = 'INVALID';
     throw err;
   }

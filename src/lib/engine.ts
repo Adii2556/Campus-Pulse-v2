@@ -313,7 +313,7 @@ export function buildSeed(): CampusItem[] {
       'Reminder!! DBMS End Sem Exam for 4th sem CSE is on TODAY at 9:00 AM in Hall B. Carry ID card + 2 pens. Gates close at 8:45, no entry after. All the best!!'),
     mk('seed-2', 'Photosynthesis Quiz submission closes 5 PM', 0, '17:00', 'Brightspace → Bio-101', 'Assignment',
       'Email · Dr. Mehta', 1, 'high', true, false,
-      'Dear students, this is a reminder that your Photosynthesis quiz on Brightspace closes today at 5:00 PM sharp. No extensions will be granted. — Dr. Mehta', null, '17:00'),
+      'Dear students, this is a reminder that your Photosynthesis quiz on Brightspace closes today at 5:00 PM sharp. No extensions will be granted. — Dr. Mehta'),
     mk('seed-3', 'Inter-Hostel Cricket Final — Boys vs Girls batch', -1, '16:30', 'Sports Ground', 'Sports',
       'WhatsApp · Sports Council', 3, 'medium', false, false,
       'FINALS! Boys vs Girls cricket final yesterday at 4:30 PM, Sports Ground. Congrats to our champions!!'),
@@ -376,7 +376,7 @@ const KEY_BACKUP = 'campus-pulse-v1.bak';
 export interface StoreState { items: CampusItem[]; onboarded: boolean }
 
 /** Canonical shape for duplicate detection — same notice text + same scheduled slot. */
-export function canonicalSignature(item: Pick<CampusItem, 'title' | 'date' | 'time' | 'endTime' | 'category'>): string {
+export function canonicalSignature(item: Pick<CampusItem, 'title' | 'date' | 'time' | 'category'> & { endTime?: string | null }): string {
   const norm = (s: string | null | undefined) => (s ?? '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').replace(/\s+/g, ' ').trim();
   return [norm(item.title), item.date ?? 'undated', item.time ?? 'allday', item.endTime ?? 'noend', item.category].join('|');
 }
@@ -504,6 +504,7 @@ export interface Extraction {
   source: ExtractionSource;
   signals: string[];
   notice?: string; // short human-readable note, e.g. why a field is missing
+  confidence: number;
 }
 
 /** Validate an externally-produced extraction (endpoint payload). Returns null when unsalvageable. */
@@ -525,6 +526,18 @@ export function sanitizeExtraction(raw: unknown, source: ExtractionSource): Extr
   const category = CATEGORIES.includes(r.category as Category) ? (r.category as Category) : 'General';
   const priority: Priority = ['low', 'medium', 'high'].includes(r.priority as string) ? (r.priority as Priority) : 'medium';
 
+  let confidence = typeof r.confidence === 'number' && Number.isFinite(r.confidence)
+    ? Math.max(0, Math.min(100, Math.round(r.confidence)))
+    : 0;
+  if (!confidence) {
+    let score = 50;
+    if (date) score += 20;
+    if (time) score += 10;
+    if (r.venue) score += 10;
+    if (category !== 'General') score += 10;
+    confidence = Math.min(98, score);
+  }
+
   return {
     title,
     date,
@@ -536,6 +549,7 @@ export function sanitizeExtraction(raw: unknown, source: ExtractionSource): Extr
     cancelled: r.cancelled === true,
     source,
     signals: Array.isArray(r.signals) ? r.signals.filter((s): s is string => typeof s === 'string').slice(0, 6) : [],
+    confidence,
   };
 }
 
@@ -909,7 +923,7 @@ export function extractItem(rawInput: string): Extraction {
   /* ---------- TITLE ---------- */
   // remove matched date/time spans & filler
   let body = text;
-  const removals = [...dateCand];
+  const removals: { idx: number; len: number }[] = [...dateCand];
   if (range) removals.push({ idx: range.startIdx, len: range.startLen });
   else for (const tc of timeCand) removals.push({ idx: tc.idx, len: tc.len });
   removals.sort((a, b) => b.idx - a.idx);
@@ -958,9 +972,17 @@ export function extractItem(rawInput: string): Extraction {
 
   const note = !dateISO ? 'No date mentioned — left unset on purpose (a guess would be worse than a blank).' : undefined;
 
+  let confidence = 50;
+  if (dateISO) confidence += 20;
+  if (timeISO) confidence += 10;
+  if (venue) confidence += 10;
+  if (bestCat !== 'General') confidence += 10;
+  confidence = Math.min(98, confidence);
+
   return {
     title, date: dateISO, time: timeISO, endTime: endTimeISO, venue,
     category: bestCat, priority, cancelled, source: 'local-fallback', signals, notice: note,
+    confidence,
   };
 }
 

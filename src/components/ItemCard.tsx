@@ -29,7 +29,7 @@ export default function ItemCard({ item, index = 0 }: { item: CampusItem; index?
   const status = itemStatus(item);
   const dToday = new Date();
   const isToday = item.date === `${dToday.getFullYear()}-${String(dToday.getMonth() + 1).padStart(2, '0')}-${String(dToday.getDate()).padStart(2, '0')}`;
-  const dayNum = item.date.slice(8, 10);
+  const dayNum = item.date ? item.date.slice(8, 10) : '—';
   const done = item.done;
 
   return (
@@ -53,7 +53,7 @@ export default function ItemCard({ item, index = 0 }: { item: CampusItem; index?
         <div className={`w-[4.4rem] shrink-0 flex flex-col items-center justify-center py-3 border-r border-line/70 ${isToday && !done ? 'bg-accent-soft/60' : 'bg-paper/60'}`}>
           <span className="font-mono text-[0.56rem] tracking-[0.2em] text-muted">{weekdayShort(item.date)}</span>
           <span className={`font-display font-black text-[1.65rem] leading-none mt-0.5 ${isToday && !done ? 'text-accent-deep' : 'text-ink'}`}>{dayNum}</span>
-          <span className="font-mono text-[0.55rem] text-faint uppercase mt-0.5">{formatDateShort(item.date).split(' ')[1]}</span>
+          <span className="font-mono text-[0.55rem] text-faint uppercase mt-0.5">{item.date ? formatDateShort(item.date).split(' ')[1] : ''}</span>
           {item.pinned && <Pin size={12} className="text-gold fill-gold mt-1.5 rotate-45" />}
         </div>
 

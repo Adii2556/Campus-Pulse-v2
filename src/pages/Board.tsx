@@ -62,7 +62,7 @@ export default function Board() {
     if (category !== 'All') out = out.filter(i => i.category === category);
     switch (status) {
       case 'today': out = out.filter(i => !i.done && daysUntil(i.date) === 0); break;
-      case 'week': out = out.filter(i => !i.done && daysUntil(i.date) >= 0 && daysUntil(i.date) <= 7); break;
+      case 'week': out = out.filter(i => { const d = daysUntil(i.date); return !i.done && d !== null && d >= 0 && d <= 7; }); break;
       case 'expired': out = out.filter(i => !i.done && itemStatus(i) === 'expired'); break;
       case 'done': out = out.filter(i => i.done); break;
       default: break;
@@ -77,7 +77,10 @@ export default function Board() {
   }, [items, query, category, status, sort]);
 
   const urgentToday = items.filter(i => !i.done && daysUntil(i.date) === 0).sort(sortByDateTime);
-  const reminderItems = items.filter(i => !i.done && i.remind && itemStatus(i) !== 'expired' && daysUntil(i.date) <= 3);
+  const reminderItems = items.filter(i => {
+    const d = daysUntil(i.date);
+    return !i.done && i.remind && itemStatus(i) !== 'expired' && d !== null && d >= 0 && d <= 3;
+  });
   const expiredCount = items.filter(i => !i.done && itemStatus(i) === 'expired').length;
   const activeCount = items.filter(i => !i.done).length;
   const totalPinned = filtered.filter(i => i.pinned).length;

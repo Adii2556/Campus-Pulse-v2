@@ -30,13 +30,14 @@ export default async function handler(req, res) {
   try {
     const result = await runDigest(items, process.env);
     res.status(200).json(result);
-  } catch (err) {
-    const code = err && err.code;
+  } catch (err: unknown) {
+    const errObj = typeof err === 'object' && err !== null ? (err as Record<string, unknown>) : null;
+    const code = typeof errObj?.code === 'string' ? errObj.code : undefined;
     if (code === 'INVALID') {
       res.status(502).json({ error: 'The AI service returned an unusable digest. Try again.' });
       return;
     }
-    const msg = String((err && err.message) || 'Unknown AI error');
+    const msg = typeof errObj?.message === 'string' ? errObj.message : 'Unknown AI error';
     const timedOut = /abort|timeout|timed out/i.test(msg);
     res.status(timedOut ? 504 : 502).json({ error: timedOut ? 'The AI service took too long to respond.' : msg.slice(0, 240) });
   }

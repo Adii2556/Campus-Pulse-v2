@@ -1,11 +1,11 @@
-import { defineConfig, loadEnv } from 'vite'
+import { defineConfig, loadEnv, type PluginOption } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import aiDevPlugin from './server/aiDevPlugin.ts'
 
 // https://vite.dev/config/
 export default defineConfig(async ({ mode }) => {
-  const plugins = [react(), tailwindcss()];
+  const plugins: PluginOption[] = [react(), tailwindcss()];
   if (mode === 'development') plugins.push(aiDevPlugin());
   try {
     // @ts-ignore

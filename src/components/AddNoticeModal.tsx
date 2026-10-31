@@ -50,7 +50,7 @@ export default function AddNoticeModal() {
       const result = extractItem(text);
       setExtraction(result);
       setTitle(result.title);
-      setDate(result.date);
+      setDate(result.date ?? '');
       setTime(result.time ?? '');
       setVenue(result.venue ?? '');
       setCategory(result.category);
@@ -92,6 +92,7 @@ export default function AddNoticeModal() {
       raw: text.trim(),
       priority,
       remind,
+      provenance: extraction?.source ?? 'local-fallback',
     });
     setAddOpen(false);
     showToast(`On the board — “${(title.trim() || 'notice').slice(0, 44)}${title.trim().length > 44 ? '…' : ''}”`);
@@ -99,7 +100,12 @@ export default function AddNoticeModal() {
 
   const dayPreview = useMemo(() => {
     if (!date) return '';
-    try { return parseLocal(date).toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'long' }); } catch { return ''; }
+    try {
+      const d = parseLocal(date);
+      return d ? d.toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'long' }) : '';
+    } catch {
+      return '';
+    }
   }, [date]);
 
   return (

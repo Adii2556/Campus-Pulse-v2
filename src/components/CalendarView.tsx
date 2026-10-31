@@ -21,6 +21,7 @@ export default function CalendarView({
   const byDate = useMemo(() => {
     const map = new Map<string, CampusItem[]>();
     for (const item of items) {
+      if (!item.date) continue;
       const list = map.get(item.date) || [];
       list.push(item);
       map.set(item.date, list);
